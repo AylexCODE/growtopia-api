@@ -27,27 +27,45 @@ app.get('/item', async (req, res) => {
     try{
         const itemName = req.query.q;
         
-        const resultItems = await searchItem(itemName); console.log(resultItems);
-        if(resultItems == 0) return res.sendStatus(404);
-        
         const response = await axios({
             method: "GET",
-            url: `https://growtopia.fandom.com/api.php?action=parse&page=${encodeURIComponent(resultItems[0].title)}&&format=json`
+            url: `https://growtopia.fandom.com/api.php?action=parse&page=${encodeURIComponent(itemName)}&&format=json`
         });
         const html = load(response.data.parse.text["*"]);
 
         const description = html(".card-text").first().text().trim();
-        const properties = html("#mw-content-text > div > div.gtw-card.item-card > div:nth-child(4)").text().trim().split(/[\.+\!]/).filter((d) => d !== "");
-        const sprite = html("div.card-header .growsprite > img").attr("src");
-        const color = html(".seedColor > div").text().trim()?.split(" ");
-        const rarity = html(".card-header b > small").text().match(/(\d+)/);
-        const recipe = html(".recipebox table.content").last().text().trim().split(/[\r\n\x0B\x0C\u0085\u2028\u2029]+/).map((el) => el.trim());
-        const splice = html(".bg-splice").text();
-        const info = html("#mw-content-text > div > p:nth-child(3)").text().trim();
+        let properties = html('.card-title:contains("Properties")')
+            .next('.card-text')
+            .html();
+        properties = properties ? properties.split(/<br\s*\/?>/i).map(str => html(`<span>${str}</span>`).text().trim()).filter(text => text.length > 0) : [];
+        const icon = html("div.card-header .growsprite > img").attr("src");
+        const seedColor = html(".seedColor > div").text().trim()?.split(" ");
+        const rarity = html(".gtw-card .card-header b > small").text().match(/\d+/);
+        const recipe = [];
+        html('table.content span.seed').each((i, el) => {
+            const imgSrc = html(el).find('img').attr('src');
+            const anchor = html(el).next('a');
+
+            recipe.push({
+                img: imgSrc,
+                text: anchor.text().trim()
+            });
+        });
+
+        const info = html(".mw-content-ltr > p").first().text().trim();
         const type = html("table.card-field tr:nth-child(1) > td").text().split(" ").pop();
+        const chi = html("table.card-field tr:nth-child(2) > td").text().split(" ").pop();
+        const growTime = html("table.card-field tr:nth-child(7) > td").text().split(" ").join(" ").trim();
+        const gemsDrop = html("table.card-field tr:nth-child(8) > td").text().split(" ").join(" ").trim();
+        const hits = html("table.card-field tr:nth-child(5) > td").clone().find("small").remove().end().text().match(/\d+(?=\sHits)/g).map(Number); 
+        const restoresAfter = html("table.card-field tr:nth-child(5) > td > small").text().split(" ").join(" ").trim();
 
         res.send({
-            description, properties, sprite, color, rarity, recipe, splice, info, type
+            description, properties, icon, rarity, recipe, info, data: {
+                type, chi, growTime, gemsDrop, hardness: {
+                    hits, restoresAfter
+                }, seedColor
+            }
         });
     }catch(e){
         console.log(e);
